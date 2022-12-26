@@ -2,6 +2,8 @@
 
 ## How to demo
 
+| Note: to run project fluently, I'm recomment you to install tensorflow first, with python 3.10 and pip 22.3.1
+
 1. Install needed package
    `pip install -r requirements.txt`
 
