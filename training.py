@@ -24,12 +24,17 @@ from sklearn.metrics import mean_absolute_percentage_error
 
 # %%
 # dữ liệu được lấy từ api của tiingo
-start = '01/01/2015'
+start = '01/01/2019'
 end = dt.datetime.now().strftime("%d/%m/%Y")
-company = 'MSFT'
+company = 'AAPL'
 key = '3848aa6f3355ce8a788bdd508d862b26358c1963'
 df = pdr.get_data_tiingo(company, start=start, end=end, api_key=key)
 df = pd.DataFrame(df)
+
+# df = pd.read_csv('company.csv')
+# while df['close'].min() > newdf['close'].min():
+#     df.append(newdf.pop(newdf['close'].min()))
+# newdf.to_csv('company.csv')
 df.reset_index(inplace=True)
 # xử lý dữ liệu ngày tháng
 df["date"] = pd.to_datetime(df.date, format="%Y-%m-%d %H:%M:%S")
@@ -49,7 +54,7 @@ df.head()
 
 
 # %%
-df.describe()
+df.info()
 
 
 # %%

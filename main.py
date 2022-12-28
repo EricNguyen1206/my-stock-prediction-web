@@ -6,6 +6,7 @@ from prophet.plot import plot_plotly
 from sklearn.preprocessing import MinMaxScaler  # Chuẩn hóa dữ liệu
 from plotly import graph_objs as go
 from plotly import express as px
+from plotly import figure_factory as ff
 from keras.models import load_model  # tải mô hình
 
 import pickle
@@ -43,10 +44,12 @@ if authentication_status:
     # ---- SIDEBAR ----
     with st.sidebar:
         st.sidebar.title(f"Welcome {name}")
-        st.sidebar.subheader('Query parameters')
+        st.sidebar.subheader('Categorize data')
+
         start_date = st.sidebar.date_input(
-            "Start date", dt.date(2019, 1, 1))
-        end_date = st.sidebar.date_input("End date", dt.datetime.now())
+            "Start date", value=dt.datetime.now() - dt.timedelta(150), max_value=dt.datetime.now() - dt.timedelta(150))
+        end_date = st.sidebar.date_input(
+            "End date", dt.datetime.now(), min_value=start_date+dt.timedelta(150))
         # Retrieving tickers data
         ticker_list = pd.read_csv('company.csv')
         ticker_list = np.array(ticker_list['Ticker'])
@@ -57,43 +60,43 @@ if authentication_status:
     st.title('Stock Forecast App')
     tickerSymbol
 
-    @st.cache
+    @st.cache(allow_output_mutation=True)
     def load_data(ticker):
         key = '3848aa6f3355ce8a788bdd508d862b26358c1963'
         df = pdr.get_data_tiingo(
             ticker, start=start_date, end=end_date, api_key=key)
-        df = pd.DataFrame(df)
-        df.reset_index(inplace=True)
         return df
 
     data_load_state = st.text('Loading data...')
     data = load_data(tickerSymbol)
+    data = pd.DataFrame(data)
+    data.reset_index(inplace=True)
     data_load_state.text('Loading data... done!')
-
-    st.subheader('Raw data')
-    st.write(data)
-
-    # Plot raw data
-
-    def plot_raw_data():
-        fig = go.Figure(data=[go.Candlestick(x=data['date'],
-                                             open=data['open'], high=data['high'],
-                                             low=data['low'], close=data['close'])])
-        fig.layout.update(
-            title_text='Time Series data with Rangeslider', xaxis_rangeslider_visible=True)
-        st.plotly_chart(fig)
-
-    plot_raw_data()
-
-    # Predict forecast with Prophet.
 
     def str_to_datetime(s):
         split = s.split('-')
         year, month, day = int(split[0]), int(split[1]), int(split[2])
         return dt.datetime(year=year, month=month, day=day)
     data["date"] = pd.to_datetime(data.date, format="%Y-%m-%d %H:%M:%S")
-    data["date"] = data["date"].dt.strftime('%Y-%m-%d')
-    data['date'] = data['date'].apply(str_to_datetime)
+    data["date"] = data["date"].dt.strftime("%Y-%m-%d")
+
+    st.subheader("Raw data")
+    st.write(data.iloc[::-1])
+
+    # Plot raw data
+
+    # data["date"] = data["date"].apply(str_to_datetime)
+
+    def plot_raw_data():
+        fig = go.Figure(data=[go.Candlestick(x=data['date'],
+                                             open=data['open'], high=data['high'],
+                                             low=data['low'], close=data['close'])])
+        fig.layout.update(
+            title_text=f'Candlestick chart of {tickerSymbol}', xaxis_rangeslider_visible=True)
+        st.plotly_chart(fig)
+
+    plot_raw_data()
+
     # Preprocess data
     df = data[['close', 'high', 'low', 'open']]
     df = pd.DataFrame(df)
@@ -134,17 +137,18 @@ if authentication_status:
     df_past['date'] = data[['date']]
     df_past.set_index('date')
     df_past['forecast'] = np.nan
-    df_past['forecast'].iloc[-1] = df_past['market'].iloc[-1]
+    # df_past['forecast'].iloc[-1] = df_past['market'].iloc[-1]
 
     df_future = pd.DataFrame(columns=['date', 'market', 'forecast'])
     df_future['date'] = pd.date_range(
         start=dt.date.today(), periods=30)
+    df_future['date'] = df_future['date'].dt.strftime("%Y-%m-%d")
     df_future['forecast'] = prediction.flatten()
     df_future['market'] = np.nan
 
     results = df_past.tail(60).append(df_future).set_index('date')
-    st.write(results)
-    results.to_csv('results.csv')
+    st.subheader("Forecast")
+    # results.to_csv('results.csv')
     # st.line_chart(results)
 
     def plot_forecast_data():
@@ -155,3 +159,30 @@ if authentication_status:
         st.plotly_chart(fig)
 
     plot_forecast_data()
+
+    # st.write(df_future['forecast'].values[-1]-df_future['forecast'].values[0])
+    def get_roi(val_begin, val_end):
+        return (val_end - val_begin)/val_begin
+    roi = get_roi(df_future['forecast'].values[0],
+                  df_future['forecast'].values[-1])
+
+    def plot_roi_normal_distribution():
+        df_future['percent_roi'] = np.nan
+        for i in range(1, len(df_future['forecast'])):
+            df_future.at[i, 'percent_roi'] = 100*get_roi(
+                df_future['forecast'].values[i-1], df_future['forecast'].values[i])
+        df_future.at[0, 'percent_roi'] = 100*get_roi(
+            df_past['market'].values[-1], df_future['forecast'].values[0])
+        st.write(df_future[['date', 'forecast', 'percent_roi']])
+        group_labels = ['percent_roi']
+        fig = ff.create_distplot(
+            [df_future['percent_roi']], group_labels, curve_type='normal')
+        fig.layout.update(
+            title_text=f'Normal distribution ROI percent of {tickerSymbol}', xaxis_rangeslider_visible=True, template='plotly_dark')
+        st.plotly_chart(fig)
+
+    plot_roi_normal_distribution()
+    st.subheader("Summary")
+    st.write(f"Return on Investment rate next 30 days: {round(roi, 6)}")
+    st.write(
+        f"Return on Investment percent next 30 days: {round(roi*100, 3)} %")
